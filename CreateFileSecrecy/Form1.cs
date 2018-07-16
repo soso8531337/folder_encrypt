@@ -70,6 +70,11 @@ namespace CreateFileSecrecy
                  current_file.Text = "正在取消...";
                  return;
              }
+             if (textBox_PassWord1.Text.Trim().Length == 0) 
+             {
+                 MessageBox.Show("请输入加密密码!");
+                 return;
+             }
              button_Encrypt.Text = "取消";
 
              current_file.Text = "准备加密...";
@@ -150,8 +155,11 @@ namespace CreateFileSecrecy
              cancelDecrypt = false;
              button_UnEncrypt.Text = "开始解密";
              button_UnEncrypt.Enabled = true;
-             this.textBox_UnEncPath.Text = "";
-             this.textBox_PassWord2.Text = "";
+             if (bRet != 0)
+             {
+                 this.textBox_UnEncPath.Text = "";
+                 this.textBox_PassWord2.Text = "";
+             }
              decpypt_status.Text = "";
              this.progressBar2.Value = 0;
          }
@@ -223,6 +231,29 @@ namespace CreateFileSecrecy
              
              }
          }
+         private void AddEntryProgress(object sender, AddProgressEventArgs e)
+         {
+             if (cancelEncrypt == true)
+             {
+                 e.Cancel = true;
+                 return;
+             }
+             Application.DoEvents();
+             if (e.EventType == ZipProgressEventType.Adding_Started)
+             {
+                 current_file.Text = "扫描文件...";
+             }
+             else if (e.EventType == ZipProgressEventType.Adding_AfterAddEntry)
+             {
+                 //MessageBox.Show("Adding_AfterAddEntry:" + e.EntriesTotal.ToString());
+                 current_file.Text = "待加密文件个数:" + e.EntriesTotal.ToString();
+             }
+             else if (e.EventType == ZipProgressEventType.Adding_Completed)
+             {
+                 //MessageBox.Show("Adding_Completed:" + e.EntriesTotal.ToString());
+                 current_file.Text = "开始加密...";
+             }         
+         }
          private void SaveProgress(object sender, SaveProgressEventArgs e)
          {
              if (cancelEncrypt == true) 
@@ -262,10 +293,54 @@ namespace CreateFileSecrecy
              else if (e.EventType == ZipProgressEventType.Saving_Completed)
              {
                 // MessageBox.Show("Done: " + e.ArchiveName);
-                 current_file.Text = "加密完成...";
+                 current_file.Text = "正在生成加密文件，请稍后...";
+             }
+             else if (e.EventType == ZipProgressEventType.Saving_AfterSaveTempArchive) {
+                // MessageBox.Show("Saving_AfterSaveTempArchive: " + e.ArchiveName);
+                 current_file.Text = "正在生成加密文件，请稍后...";
+             }
+             else if (e.EventType == ZipProgressEventType.Saving_BeforeRenameTempArchive)
+             {
+                // MessageBox.Show("Saving_BeforeRenameTempArchive: " + e.ArchiveName);
+                 current_file.Text = "正在生成加密文件，请稍后...";
+             }
+             else if (e.EventType == ZipProgressEventType.Saving_AfterRenameTempArchive)
+             {
+                // MessageBox.Show("Saving_AfterRenameTempArchive: " + e.ArchiveName);
+                 current_file.Text = "正在归档，请稍后...";
+             }
+
+         }
+         /// <summary>
+         /// 递归删除子文件夹以及文件(包括只读文件)
+         /// </summary>
+         /// <param name="TARGET_PATH">文件路径</param>
+         private void DeleteFolder(string TARGET_PATH)
+         {
+             //如果存在目录文件，就将其目录文件删除
+             if (Directory.Exists(TARGET_PATH))
+             {
+                 foreach (string filenamestr in Directory.GetFileSystemEntries(TARGET_PATH))
+                 {
+                     if (File.Exists(filenamestr))
+                     {
+                         FileInfo file = new FileInfo(filenamestr);
+                         if (file.Attributes.ToString().IndexOf("ReadOnly") != -1)
+                         {
+                             file.Attributes = FileAttributes.Normal;//去掉文件属性
+                         }
+                         File.Delete(filenamestr);//直接删除其中的文件
+                     }
+                     else
+                     {
+                         DeleteFolder(filenamestr);//递归删除
+                     }
+                 }
+                 System.IO.DirectoryInfo DirInfo = new DirectoryInfo(TARGET_PATH);
+                 DirInfo.Attributes = FileAttributes.Normal & FileAttributes.Directory;    //去掉文件夹属性     
+                 Directory.Delete(TARGET_PATH, true);
              }
          }
-
          private int encryptFiles(string sourceDirectory, int zipType, ref string Result, ref string savePath, string passWord = "")
          {
              try
@@ -295,6 +370,13 @@ namespace CreateFileSecrecy
                      zip.Password = passWord;
                      //支持大文件传输
                      zip.UseZip64WhenSaving = Zip64Option.AsNecessary;
+                     //解决解压出错
+                    // zip.ParallelDeflateThreshold = -1;
+                     //设置压缩格式和压缩level
+                     zip.CompressionLevel = Ionic.Zlib.CompressionLevel.BestSpeed;
+                     zip.CompressionMethod = CompressionMethod.None;
+                     zip.SaveProgress += SaveProgress;
+                     zip.AddProgress += AddEntryProgress;
                      if (zipType == 0)
                      {
                          //将要压缩的文件夹添加到zip对象中去(要压缩的文件夹路径和名称)
@@ -306,23 +388,28 @@ namespace CreateFileSecrecy
                          zip.AddFile(sourceDirectory, "");
                      }
 
-                     zip.SaveProgress += SaveProgress;
+
                      zip.Save();
                  }
+ 
                  if (cancelEncrypt == true)
                  {
                      return 3;
                  }
                  if (zipType == 0)
                  {
-                     Directory.Delete(sourceDirectory, true);
+                     //Directory.Delete(sourceDirectory, true);
+                     DeleteFolder(sourceDirectory);
                  }
                  else
                  {
+                     System.IO.File.SetAttributes(sourceDirectory, System.IO.FileAttributes.Normal);
                      File.Delete(sourceDirectory);
                  }
 
                  savePath = targetFileName;
+                 current_file.Text = "加密完成！";
+                 Application.DoEvents();
              }
              catch (Exception ex)
              {
@@ -385,7 +472,12 @@ namespace CreateFileSecrecy
                  // MessageBox.Show("Done: " + e.ArchiveName);
                  decpypt_status.Text = "解密完成...";
              }
+             else if (e.EventType == ZipProgressEventType.Saving_AfterCompileSelfExtractor)
+             {
+                 MessageBox.Show("Saving_AfterCompileSelfExtractor: " + e.ArchiveName);
+             }
          }
+
          private int decryptFiles(string zipFileName, ref string Result, ref string OpenPath, string passWord = "")
          {
              try
@@ -424,6 +516,12 @@ namespace CreateFileSecrecy
                      zip.Password = passWord;
                      //支持大文件传输
                      zip.UseZip64WhenSaving = Zip64Option.AsNecessary;
+                     //解决解压出错
+                     //zip.ParallelDeflateThreshold = -1;
+                     //设置压缩格式和压缩level
+                     zip.CompressionLevel = Ionic.Zlib.CompressionLevel.BestSpeed;
+                     zip.CompressionMethod = CompressionMethod.None;
+
                      zip.ExtractProgress += zip_ExtractProgress;
                      zip.ExtractAll(targetFileName);
                  }
