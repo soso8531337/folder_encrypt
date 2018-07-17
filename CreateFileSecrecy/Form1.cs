@@ -315,31 +315,95 @@ namespace CreateFileSecrecy
          /// 递归删除子文件夹以及文件(包括只读文件)
          /// </summary>
          /// <param name="TARGET_PATH">文件路径</param>
-         private void DeleteFolder(string TARGET_PATH)
+         private void DeleteFileFolder(string TARGET_PATH)
          {
              //如果存在目录文件，就将其目录文件删除
-             if (Directory.Exists(TARGET_PATH))
-             {
-                 foreach (string filenamestr in Directory.GetFileSystemEntries(TARGET_PATH))
-                 {
-                     if (File.Exists(filenamestr))
-                     {
-                         FileInfo file = new FileInfo(filenamestr);
-                         if (file.Attributes.ToString().IndexOf("ReadOnly") != -1)
-                         {
-                             file.Attributes = FileAttributes.Normal;//去掉文件属性
-                         }
-                         File.Delete(filenamestr);//直接删除其中的文件
-                     }
-                     else
-                     {
-                         DeleteFolder(filenamestr);//递归删除
-                     }
-                 }
-                 System.IO.DirectoryInfo DirInfo = new DirectoryInfo(TARGET_PATH);
-                 DirInfo.Attributes = FileAttributes.Normal & FileAttributes.Directory;    //去掉文件夹属性     
-                 Directory.Delete(TARGET_PATH, true);
-             }
+            if (Directory.Exists(TARGET_PATH))
+            {
+                foreach (string filenamestr in Directory.GetFileSystemEntries(TARGET_PATH))
+                {
+                    if (File.Exists(filenamestr))
+                    {
+                        /*
+                        FileInfo file = new FileInfo(filenamestr);
+                        if (file.Attributes.ToString().IndexOf("ReadOnly") != -1)
+                        {
+                            file.Attributes = FileAttributes.Normal;//去掉文件属性
+                        }
+                            */
+                        System.IO.File.SetAttributes(filenamestr, System.IO.FileAttributes.Normal);
+                        try
+                        {
+                            File.Delete(filenamestr);//直接删除其中的文件
+                        }
+                        catch (Exception e) {
+                            DialogResult dr = MessageBox.Show(e.Message, "读写文件", MessageBoxButtons.AbortRetryIgnore);
+                            if (dr == DialogResult.Retry)
+                            {
+                                File.Delete(filenamestr);
+                            }
+                            else if(dr == DialogResult.Abort)
+                            {
+                                return;
+                            }                           
+                        }            
+                    }
+                    else
+                    {
+                        DeleteFileFolder(filenamestr);//递归删除
+                    }
+                }
+                System.IO.DirectoryInfo DirInfo = new DirectoryInfo(TARGET_PATH);
+                DirInfo.Attributes = FileAttributes.Normal & FileAttributes.Directory;    //去掉文件夹属性     
+                while (true)
+                {
+                    try
+                    {
+                        Directory.Delete(TARGET_PATH, true);
+                    }
+                    catch (Exception e)
+                    {
+                        DialogResult dr = MessageBox.Show(e.Message, "读写文件", MessageBoxButtons.AbortRetryIgnore);
+                        if (dr == DialogResult.Retry)
+                        {
+                            //Directory.Delete(TARGET_PATH, true);
+                            continue;
+                        }
+                        else if (dr == DialogResult.Abort)
+                        {
+                            return;
+                        }
+                    }
+                    break;
+                }
+                     
+            }
+            else if (File.Exists(TARGET_PATH))
+            {
+                while (true)
+                {
+                    try
+                    {
+                        System.IO.File.SetAttributes(TARGET_PATH, System.IO.FileAttributes.Normal);
+                        File.Delete(TARGET_PATH);//直接删除其中的文件                    
+                    }
+                    catch (Exception e)
+                    {
+                        DialogResult dr = MessageBox.Show(e.Message, "读写文件", MessageBoxButtons.AbortRetryIgnore);
+                        if (dr == DialogResult.Retry)
+                        {
+                            //System.IO.DirectoryInfo DirInfo = new DirectoryInfo(TARGET_PATH);
+                            //File.Delete(TARGET_PATH);
+                            continue;
+                        }
+                        else if (dr == DialogResult.Abort)
+                        {
+                            return;
+                        }
+                    }
+                    break;
+                }
+            }
          }
          private int encryptFiles(string sourceDirectory, int zipType, ref string Result, ref string savePath, string passWord = "")
          {
@@ -356,7 +420,8 @@ namespace CreateFileSecrecy
                      DialogResult dr = MessageBox.Show("加密文件已存在，是否继续？", "加密文件",MessageBoxButtons.YesNo);
                      if (dr == DialogResult.Yes)
                      {
-                         File.Delete(targetFileName);
+                        // File.Delete(targetFileName);
+                         DeleteFileFolder(targetFileName);
                      }
                      else {
                          return 2;
@@ -399,12 +464,13 @@ namespace CreateFileSecrecy
                  if (zipType == 0)
                  {
                      //Directory.Delete(sourceDirectory, true);
-                     DeleteFolder(sourceDirectory);
+                     DeleteFileFolder(sourceDirectory);
                  }
                  else
                  {
                      System.IO.File.SetAttributes(sourceDirectory, System.IO.FileAttributes.Normal);
-                     File.Delete(sourceDirectory);
+                    // File.Delete(sourceDirectory);
+                     DeleteFileFolder(sourceDirectory);
                  }
 
                  savePath = targetFileName;
@@ -501,9 +567,11 @@ namespace CreateFileSecrecy
                      if (dr == DialogResult.Yes)
                      {
                          if (encFileType == 2) {
-                             File.Delete(targetFileName);                        
+                             //File.Delete(targetFileName);
+                             DeleteFileFolder(targetFileName);
                          }else if(encFileType == 1){
-                             Directory.Delete(targetFileName, true);
+                             //Directory.Delete(targetFileName, true);
+                             DeleteFileFolder(targetFileName);
                          }
                      }
                      else
@@ -523,7 +591,8 @@ namespace CreateFileSecrecy
                      zip.CompressionMethod = CompressionMethod.None;
 
                      zip.ExtractProgress += zip_ExtractProgress;
-                     zip.ExtractAll(targetFileName);
+                     //zip.ExtractAll(targetFileName);
+                     zip.ExtractAll(targetFileName, ExtractExistingFileAction.OverwriteSilently);
                  }
                  if (cancelDecrypt == true)
                  {
